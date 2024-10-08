@@ -1,127 +1,99 @@
 from imutils.video import VideoStream
 from imutils import face_utils
 import numpy as np
-import argparse
-import imutils
 import playsound
+import imutils
 import time
-from threading import Thread
+from threading import Thread, Lock
 import dlib
-import os
 import cv2
-
-# Cau hinh duong dan den file alarm.wav
-#wav_path = "/home/pi3plus/code/Sleep_Detection/alarm_02.wav"
-wav_path = "alarm_02.wav"
+import os
 
 
-# Ham phat ra am thanh
+# Cấu hình đường dẫn đến file alarm.wav
+wav_path = "alarm.wav"
+
+# Biến khóa để bảo vệ dữ liệu giữa các luồng
+lock = Lock()
+
+# Hàm phát âm thanh
 def play_sound(path):
-    os.system("bash kill_aplay_process.sh " + path)
+    os.system("aplay " + path)
 
-
-# Ham tinh khoang cach giua 2 diem
+# Hàm tính khoảng cách giữa 2 điểm
 def e_dist(pA, pB):
     return np.linalg.norm(pA - pB)
-
-
+ 
+# Hàm tính tỷ lệ mắt
 def eye_ratio(eye):
-    # Tinh toan khoang cach theo chieu doc giua mi tren va mi duoi
     d_V1 = e_dist(eye[1], eye[5])
     d_V2 = e_dist(eye[2], eye[4])
-
-    # Tinh toan khoang cach theo chieu ngang giua 2 duoi mat
     d_H = e_dist(eye[0], eye[3])
-
-    # Tinh ty le giua chieu doc va chieu ngang
     eye_ratio_val = (d_V1 + d_V2) / (2.0 * d_H)
-
     return eye_ratio_val
 
-
-# Dinh nghia muc threshold ty le giua doc/ngang. Neu duoi muc nay la ngu gat
+# Định nghĩa ngưỡng tỷ lệ mắt và số frame ngủ
 eye_ratio_threshold = 0.25
+max_sleep_frames =8 
 
-# Threshold so frame lien tuc nham mat
-max_sleep_frames = 16
-
-# Dem so frame ngu
+# Khởi tạo các biến đếm
 sleep_frames = 0
-
-# Check xem da canh bao hay chua
 alarmed = False
 
-# Khoi tao cac module detect mat va facial landmark
-face_detect = cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
+# Khởi tạo bộ phát hiện khuôn mặt và landmark
+face_detect = dlib.get_frontal_face_detector()
 landmark_detect = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
 
-# Lay danh sach cac cum diem landmark cho 2 mat
 (left_eye_start, left_eye_end) = face_utils.FACIAL_LANDMARKS_IDXS["left_eye"]
 (right_eye_start, right_eye_end) = face_utils.FACIAL_LANDMARKS_IDXS["right_eye"]
 
-# Doc tu camera
+# Đọc từ camera
 vs = VideoStream(src=0).start()
 time.sleep(1.0)
 
 while True:
-    # Doc tu camera
+    # Đọc frame từ camera và resize
     frame = vs.read()
-
-    # Resize de tang toc do xu ly
     frame = imutils.resize(frame, width=450)
-
-    # Chuyen ve gray
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-    # Detect cac mat trong anh
-    faces = face_detect.detectMultiScale(
-        gray,
-        scaleFactor=1.1,
-        minNeighbors=5,
-        minSize=(100, 100),
-        flags=cv2.CASCADE_SCALE_IMAGE,
-    )
+    # Phát hiện khuôn mặt
+    faces = face_detect(gray)
 
-    # Duyet qua cac mat
-    for x, y, w, h in faces:
-        # Tao mot hinh chu nhat quanh khuon mat
-        rect = dlib.rectangle(int(x), int(y), int(x + w), int(y + h))
-
-        # Nhan dien cac diem landmark
+    # Duyệt qua các khuôn mặt
+    for rect in faces:
+        # Nhận diện các điểm landmark
         landmark = landmark_detect(gray, rect)
         landmark = face_utils.shape_to_np(landmark)
 
-        # Tinh toan ty le mat phai va trai va trung binh cong 2 ratio
+        # Tính toán tỷ lệ mắt trái và phải, sau đó lấy trung bình
         leftEye = landmark[left_eye_start:left_eye_end]
         rightEye = landmark[right_eye_start:right_eye_end]
-
         left_eye_ratio = eye_ratio(leftEye)
         right_eye_ratio = eye_ratio(rightEye)
-
         eye_avg_ratio = (left_eye_ratio + right_eye_ratio) / 2.0
 
-        # Ve duong bao quanh mat
+        # Vẽ đường bao quanh mắt
         left_eye_bound = cv2.convexHull(leftEye)
         right_eye_bound = cv2.convexHull(rightEye)
         cv2.drawContours(frame, [left_eye_bound], -1, (0, 255, 0), 1)
         cv2.drawContours(frame, [right_eye_bound], -1, (0, 255, 0), 1)
 
-        # Check xem mat co nham khong
+        # Kiểm tra xem mắt có nhắm không
         if eye_avg_ratio < eye_ratio_threshold:
-            sleep_frames += 1
-            # if the eyes were closed for a sufficient number of
-            # frames, then sound the alarm
+            with lock:
+                sleep_frames += 1
+
             if sleep_frames >= max_sleep_frames:
-                if not alarmed:
-                    alarmed = True
-                    # Duong dan den file wav
+                with lock:
+                    if not alarmed:
+                        alarmed = True
+                        # Phát âm thanh cảnh báo trong một luồng riêng
+                        t = Thread(target=play_sound, args=(wav_path,))
+                        t.daemon = True
+                        t.start()
 
-                    # Tien hanh phat am thanh trong 1 luong rieng
-                    t = Thread(target=play_sound, args=(wav_path,))
-                    t.deamon = True
-                    t.start()
-
-                # Ve dong chu canh bao
+                # Vẽ dòng chữ cảnh báo
                 cv2.putText(
                     frame,
                     "BUON NGU THI DI NGU DI ONG OI!!!",
@@ -131,14 +103,12 @@ while True:
                     (0, 0, 255),
                     2,
                 )
-
-        # Neu khong nham mat thi
         else:
-            # Reset lai cac tham so
-            sleep_frames = 0
-            alarmed = False
+            with lock:
+                sleep_frames = 0
+                alarmed = False
 
-            # Hien thi gia tri eye ratio trung binh
+            # Hiển thị giá trị tỷ lệ mắt trung bình
             cv2.putText(
                 frame,
                 "EYE AVG RATIO: {:.3f}".format(eye_avg_ratio),
@@ -149,14 +119,14 @@ while True:
                 2,
             )
 
-    # Hien thi len man hinh
+    # Hiển thị lên màn hình
     cv2.imshow("Camera", frame)
 
-    # Bam Esc de thoat
+    # Bấm Esc để thoát
     key = cv2.waitKey(1) & 0xFF
     if key == 27:
         break
 
-
+# Dừng camera và đóng tất cả cửa sổ
 cv2.destroyAllWindows()
 vs.stop()
