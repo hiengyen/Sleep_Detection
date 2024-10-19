@@ -100,7 +100,7 @@ while True:
         if was_asleep:
             cv2.putText(
                 frame,
-                "BUON NGU THI DI NGU DI ONG OI!!!",
+                "DAY DI DUNG NGU NUA !!!",
                 (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
