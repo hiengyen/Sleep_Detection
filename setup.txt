@@ -1,5 +1,7 @@
+opencv-python
+opencv-python-headless
+opencv-contrib-python
 imutils
 numpy
 cmake
 dlib
-opencv-python-headless
