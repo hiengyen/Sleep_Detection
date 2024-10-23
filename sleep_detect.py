@@ -14,16 +14,18 @@ wav_path = "alarm.wav"
 # Biến khóa để bảo vệ dữ liệu giữa các luồng
 lock = Lock()
 
+# Biến để kiểm soát trạng thái âm thanh
+playing_sound = False
 
-# Hàm phát âm thanh
-def play_sound(path):
-    os.system("aplay " + path)
-
+# Hàm phát âm thanh liên tục
+def play_continuous_sound(path):
+    global playing_sound
+    while playing_sound:
+        os.system("aplay " + path)
 
 # Hàm tính khoảng cách giữa 2 điểm
 def e_dist(pA, pB):
     return np.linalg.norm(pA - pB)
-
 
 # Hàm tính tỷ lệ mắt
 def eye_ratio(eye):
@@ -32,14 +34,12 @@ def eye_ratio(eye):
     d_H = e_dist(eye[0], eye[3])
     return (d_V1 + d_V2) / (2.0 * d_H)
 
-
 # Định nghĩa ngưỡng tỷ lệ mắt và số frame ngủ
 eye_ratio_threshold = 0.25
-max_sleep_frames = 8
+max_sleep_frames = 8 
 
-# Khởi tạo các biến đếm
+# Khởi tạo biến đếm
 sleep_frames = 0
-was_asleep = False
 
 # Khởi tạo bộ phát hiện khuôn mặt và landmark
 face_detect = dlib.get_frontal_face_detector()
@@ -84,23 +84,21 @@ while True:
         # Kiểm tra xem mắt có nhắm không
         if eye_avg_ratio < eye_ratio_threshold:
             sleep_frames += 1
-            if sleep_frames >= max_sleep_frames and not was_asleep:
-                was_asleep = True
-                # Phát âm thanh cảnh báo trong một luồng riêng
-                t = Thread(target=play_sound, args=(wav_path,))
+            if sleep_frames >= max_sleep_frames and not playing_sound:
+                playing_sound = True  # Bắt đầu phát âm thanh liên tục
+                t = Thread(target=play_continuous_sound, args=(wav_path,))
                 t.daemon = True
                 t.start()
         else:
-            if was_asleep:
-                # Reset sleep frames khi mở mắt
-                sleep_frames = 0
-                was_asleep = False
+            # Reset sleep frames khi mở mắt và dừng cảnh báo
+            sleep_frames = 0
+            playing_sound = False  # Dừng phát âm thanh
 
         # Vẽ dòng chữ cảnh báo
-        if was_asleep:
+        if playing_sound:
             cv2.putText(
                 frame,
-                "DAY DI DUNG NGU NUA !!!",
+                "BUON NGU THI DI NGU DI ONG OI!!!",
                 (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
@@ -130,3 +128,4 @@ while True:
 # Dừng camera và đóng tất cả cửa sổ
 cv2.destroyAllWindows()
 vs.stop()
+
