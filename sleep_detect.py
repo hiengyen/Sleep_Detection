@@ -7,6 +7,19 @@ import time
 from threading import Thread, Lock
 import dlib
 import cv2
+import subprocess
+import firebase_admin
+from firebase_admin import credentials
+
+# Init  Firebase Admin SDK
+cred = credentials.Certificate("./firebase-adminsdk.json")
+firebase_admin.initialize_app(
+    cred,
+    {
+        "storageBuckage": "sleepdetection-43473.firebasestorage.app",
+        "databaseURL": "https://smart-school-firebase-default-rtdb.asia-southeast1.firebasedatabase.app/",
+    },
+)
 
 # Cấu hình đường dẫn đến file alarm.wav
 wav_path = "alarm.wav"
@@ -17,15 +30,20 @@ lock = Lock()
 # Biến để kiểm soát trạng thái âm thanh
 playing_sound = False
 
+rtsp_url = "rtsp://localhost:8554/mystream"
+
+
 # Hàm phát âm thanh liên tục
 def play_continuous_sound(path):
     global playing_sound
     while playing_sound:
         os.system("aplay " + path)
 
+
 # Hàm tính khoảng cách giữa 2 điểm
 def e_dist(pA, pB):
     return np.linalg.norm(pA - pB)
+
 
 # Hàm tính tỷ lệ mắt
 def eye_ratio(eye):
@@ -34,9 +52,39 @@ def eye_ratio(eye):
     d_H = e_dist(eye[0], eye[3])
     return (d_V1 + d_V2) / (2.0 * d_H)
 
+
+def start_rtsp_stream(rtsp_url):
+    command = [
+        "ffmpeg",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "bgr24",
+        "-s",
+        "450x350",
+        "-r",
+        "30",
+        "-i",
+        "-",
+        "-vcodec",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-tune",
+        "zerolatency",
+        "-f",
+        "rtsp",
+        rtsp_url,
+    ]
+    return subprocess.Popen(command, stdin=subprocess.PIPE)
+
+
+rtsp_process = start_rtsp_stream(rtsp_url)
+
+
 # Định nghĩa ngưỡng tỷ lệ mắt và số frame ngủ
-eye_ratio_threshold = 0.25
-max_sleep_frames = 8 
+eye_ratio_threshold = 0.19
+max_sleep_frames = 8
 
 # Khởi tạo biến đếm
 sleep_frames = 0
@@ -46,16 +94,22 @@ face_detect = dlib.get_frontal_face_detector()
 landmark_detect = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
 
 (left_eye_start, left_eye_end) = face_utils.FACIAL_LANDMARKS_IDXS["left_eye"]
-(right_eye_start, right_eye_end) = face_utils.FACIAL_LANDMARKS_IDXS["right_eye"]
+(right_eye_start,
+ right_eye_end) = face_utils.FACIAL_LANDMARKS_IDXS["right_eye"]
 
 # Đọc từ camera
 vs = VideoStream(src=0).start()
 time.sleep(1.0)
 
+
 while True:
     # Đọc frame từ camera và resize
     frame = vs.read()
     frame = imutils.resize(frame, width=450)
+
+    # publish rtsp process
+    rtsp_process.stdin.write(frame.tobytes())
+
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
     # Phát hiện khuôn mặt
@@ -128,4 +182,7 @@ while True:
 # Dừng camera và đóng tất cả cửa sổ
 cv2.destroyAllWindows()
 vs.stop()
-
+# Đóng ffmpeg
+rtsp_process.stdin.close()
+rtsp_process.terminate()
+rtsp_process.wait()

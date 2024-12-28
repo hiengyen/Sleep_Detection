@@ -1,7 +1,9 @@
+cmake
+dlib
 opencv-python
 opencv-python-headless
 opencv-contrib-python
 imutils
 numpy
-cmake
-dlib
+ffmpeg-python
+
