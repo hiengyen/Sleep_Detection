@@ -94,11 +94,11 @@ face_detect = dlib.get_frontal_face_detector()
 landmark_detect = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
 
 (left_eye_start, left_eye_end) = face_utils.FACIAL_LANDMARKS_IDXS["left_eye"]
-(right_eye_start,
- right_eye_end) = face_utils.FACIAL_LANDMARKS_IDXS["right_eye"]
+(right_eye_start, right_eye_end) = face_utils.FACIAL_LANDMARKS_IDXS["right_eye"]
 
 # Đọc từ camera
-vs = VideoStream(src=0).start()
+# vs = VideoStream(src=0).start()
+vs = cv2.VideoCapture(0)
 time.sleep(1.0)
 
 
