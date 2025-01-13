@@ -8,6 +8,7 @@ from threading import Thread, Lock
 import dlib
 import cv2
 import subprocess
+import database
 
 rtsp_url = "rtsp://localhost:8554/mystream"
 fps = 60  # FPS mong muốn
@@ -46,10 +47,10 @@ rtsp_process = start_rtsp_stream(rtsp_url)
 wav_path = "alarm.wav"
 
 # Các ngưỡng cho phát hiện trạng thái
-EYE_RATIO_THRESHOLD = 0.25  # Ngưỡng tỷ lệ mắt để phát hiện ngủ gật
+EYE_RATIO_THRESHOLD = 0.3  # Ngưỡng tỷ lệ mắt để phát hiện ngủ gật
 MAX_SLEEP_FRAMES = 30  # Số frame tối đa cho trạng thái ngủ gật
 MAX_NO_FACE_FRAMES = 30  # Số frame tối đa không thấy khuôn mặt
-MAX_HEAD_TURN_FRAMES = 30  # Số frame tối đa cho trạng thái quay đầu
+MAX_HEAD_TURN_FRAMES = 45  # Số frame tối đa cho trạng thái quay đầu
 HEAD_ROTATION_THRESHOLD = 0.8  # Ngưỡng tỷ lệ bất đối xứng để phát hiện quay đầu
 
 # Khởi tạo các biến đếm frame và trạng thái
@@ -68,7 +69,8 @@ landmark_detect = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
 
 # Lấy chỉ số cho landmark mắt
 (left_eye_start, left_eye_end) = face_utils.FACIAL_LANDMARKS_IDXS["left_eye"]
-(right_eye_start, right_eye_end) = face_utils.FACIAL_LANDMARKS_IDXS["right_eye"]
+(right_eye_start,
+ right_eye_end) = face_utils.FACIAL_LANDMARKS_IDXS["right_eye"]
 
 # Các hàm xử lý
 
@@ -102,11 +104,12 @@ def check_head_rotation(shape):
     dist_left = e_dist(nose, left_face)
     dist_right = e_dist(nose, right_face)
 
-    asymmetry_ratio = abs(dist_left - dist_right) / ((dist_left + dist_right) / 2)
+    asymmetry_ratio = abs(dist_left - dist_right) / \
+        ((dist_left + dist_right) / 2)
     return asymmetry_ratio > HEAD_ROTATION_THRESHOLD
 
 
-def start_warning(message):
+def start_warning(message, message_type):
     """Khởi động cảnh báo âm thanh và hiển thị"""
     global playing_sound, warning_displayed
     if not playing_sound:
@@ -115,6 +118,7 @@ def start_warning(message):
         t.daemon = True
         t.start()
     warning_displayed = message
+    database.update_message(message, message_type)
 
 
 def stop_all_warnings():
@@ -122,6 +126,7 @@ def stop_all_warnings():
     global playing_sound, warning_displayed
     playing_sound = False
     warning_displayed = ""
+    database.update_message("TAI XE TINH TAO", "normal")
 
 
 def check_normal_state(faces, eye_avg_ratio, is_head_turned):
@@ -135,8 +140,9 @@ def check_normal_state(faces, eye_avg_ratio, is_head_turned):
         and sleep_frames == 0
     )
 
+    # Khởi tạo camera
 
-# Khởi tạo camera
+
 vs = VideoStream(src=0).start()
 
 
@@ -168,7 +174,7 @@ while True:
     if len(faces) == 0:
         no_face_frames += 1
         if no_face_frames >= MAX_NO_FACE_FRAMES:
-            start_warning("KHONG PHAT HIEN KHUON MAT!")
+            start_warning("KHONG PHAT HIEN KHUON MAT!", "undetect")
     else:
         no_face_frames = 0
         rect = faces[0]
@@ -180,7 +186,7 @@ while True:
         if is_head_turned:
             head_turn_frames += 1
             if head_turn_frames >= MAX_HEAD_TURN_FRAMES:
-                start_warning("TAI XE DANG MAT TAP TRUNG!!")
+                start_warning("TAI XE DANG MAT TAP TRUNG!", "unconcentrate")
         else:
             head_turn_frames = 0
 
@@ -201,7 +207,7 @@ while True:
         if eye_avg_ratio < EYE_RATIO_THRESHOLD:
             sleep_frames += 1
             if sleep_frames >= MAX_SLEEP_FRAMES:
-                start_warning("TAI XE DANG BUON NGU!!!")
+                start_warning("TAI XE DANG BUON NGU!!!", "detect")
 
         else:
             sleep_frames = 0
