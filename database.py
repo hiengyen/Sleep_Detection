@@ -35,18 +35,18 @@ def init_db():
             )
 
 
-def update_message(detail, message_type):
+def update_message(detail, messageType):
     """
     Cập nhật thông `message` trong Firebase Realtime Database.
 
-    :param message_type: Loại trạng thái (e.g., "normal","detect" ,"undetect","unconcentrate").
+    :param message_type: Loại trạng thái (e.g., "normal","warning" ,"miss","distract").
     :param detail: Thông tin chi tiết liên quan đến trạng thái.
     """
     ref = db.reference("message")
     ref.update(
         {
             "detail": detail,
-            "message_type": message_type,
+            "messageType": messageType,
         }
     )
 

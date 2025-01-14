@@ -6,4 +6,5 @@ opencv-contrib-python
 imutils
 numpy
 ffmpeg-python
+pygame
 
